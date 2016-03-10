@@ -5,6 +5,8 @@
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.8.0"]
                  [clocop "0.2.0"]
-                 [org.gnu.glpk/glpk-java "1.4.0"]]
-  ;; for GLPK
+                 [org.gnu.glpk/glpk-java "1.4.0"]
+                 [expresso "0.2.2-SNAPSHOT"]
+                 [prismatic/schema "1.0.5"]]
+  ;; for glpk-java
   :repositories {"XypronRelease" "http://rsync.xypron.de/repository"})
