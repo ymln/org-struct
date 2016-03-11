@@ -1,7 +1,6 @@
 (ns org-struct.test.problem
-  (:require [clojure.test :refer [are deftest]]
-            [numeric.expresso.core :refer [ex]]
-            [org-struct.problem :refer [normalize]]))
+  (:require [clojure.test :refer [are deftest is]]
+            [org-struct.problem :refer [normalize solve-lp]]))
 
 (deftest normalization
   (are [a b] (= (normalize a) b)
@@ -10,3 +9,6 @@
        '(+ (* x 4)) '(+ (* 4 x))
        '(+ (* 5 (- x))) '(+ (* -5 x))
        'x '(+ (* 1 x))))
+
+(deftest lp-test
+  (is (= '{x 2. y 3.} (solve-lp {} :maximize 'x '[(<= (+ x y) 5) (>= y 3)]))))

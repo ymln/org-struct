@@ -28,9 +28,13 @@
       wrap-in-sum
       (postwalk #(transform-one-level normalize-rules %))))
 
+(defn normalize-constraint [constraint]
+  (let [[op func num] constraint]
+    [op (normalize func) num]))
+
 (def Dir (s/enum :minimize :maximize))
-(def Product [(s/one '* "*") s/Num s/Symbol])
-(def Function [(s/one '+ "+") Product])
+(def Product [(s/one (s/eq '*) "*") (s/one s/Num "Num") (s/one s/Symbol "Symbol")])
+(def Function [(s/one (s/eq '+) "+") Product])
 (def Condition (s/enum '<= '= '>=))
 (def Constraint [(s/one Condition "Condition")
                  (s/one Function "Function")
@@ -43,16 +47,13 @@
   (set (filter symbol? (tree-seq sequential? rest xs))))
 
 (defn indexed [coll]
-  (map-indexed vec coll))
+  (map-indexed (fn [x i] [i x]) coll))
 
 (defn glpk-populate-array! [arr type vals]
   (doseq [[val i] (indexed vals)]
     (case type
       :int    (GLPK/intArray_setitem    arr (inc i) val)
-      :double (GLPK/doubleArray_setitem arr (inc i) val)
-      )
-    )
-  )
+      :double (GLPK/doubleArray_setitem arr (inc i) val))))
 
 (s/defn func-vals :- [s/Num]
   [func :- Function, vars :- [s/Symbol]]
@@ -60,48 +61,62 @@
                                  (assert (= op '*))
                                  [var num])
                                (rest func)))]
-    (map #(get % vars-map 0) vars)))
+    (map #(get vars-map % 0) vars)))
 
 (s/defn glpk-solver :- Solution
-  [variables :- {s/Symbol Type} dir :- Dir f :- Function constraints :- [Constraint]]
+  [variables :- {s/Symbol Type}
+   dir :- Dir
+   f :- Function
+   constraints :- [Constraint]]
   (let [problem (GLPK/glp_create_prob)
-        vars (vec (find-symbols (conj f constraints)))
+        vars (vec (find-symbols (conj constraints f)))
         vars-count (count vars)
         int-array (GLPK/new_intArray (inc vars-count))
-        double-array (GLPK/new_doubleArray (inc vars-count))]
+        double-array (GLPK/new_doubleArray (inc vars-count))
+        params (glp_smcp.)]
+    (try
+      (GLPK/glp_add_cols problem vars-count)
+      (doseq [[var i] (indexed vars)]
+        (GLPK/glp_set_col_name problem (inc i) (str var))
+        (GLPK/glp_set_col_bnds problem (inc i) GLPKConstants/GLP_FR 0 0)
+        (GLPK/glp_set_col_kind problem (inc i) (case (variables var)
+                                                 :binary GLPKConstants/GLP_BV
+                                                 GLPKConstants/GLP_CV)))
 
-    (GLPK/glp_add_cols problem vars-count)
-    (doseq [[var i] (indexed vars)]
-      (GLPK/glp_set_col_name problem i (str var))
-      (GLPK/glp_set_col_kind problem i (case (variables var)
-                                         :binary GLPKConstants/GLP_BV
-                                         GLPKConstants/GLP_CV)))
+      (glpk-populate-array! int-array :int (range 1 (inc vars-count)))
+      (GLPK/glp_add_rows problem (count constraints))
+      (doseq [[[condition func num] i] (indexed constraints)]
+        (GLPK/glp_set_row_bnds problem (inc i)
+                               (case condition
+                                 <= GLPKConstants/GLP_UP
+                                 >= GLPKConstants/GLP_LO
+                                 =  GLPKConstants/GLP_FX)
+                               num num)
+        (glpk-populate-array! double-array :double (func-vals func vars))
+        (GLPK/glp_set_mat_row problem (inc i) vars-count int-array double-array))
 
-    (glpk-populate-array! int-array :int (range 1 (inc vars-count)))
-    (GLPK/glp_add_rows problem (count constraints))
-    (doseq [[[condition func num] i] (indexed constraints)]
-      (GLPK/glp_set_row_bnds problem i
-                             (case condition
-                               < GLPKConstants/GLP_UP
-                               > GLPKConstants/GLP_LO
-                               = GLPKConstants/GLP_FX)
-                             num num)
-      (glpk-populate-array! double-array :double (func-vals func vars))
-      (GLPK/glp_set_mat_row problem i vars-count int-array double-array))
+      (GLPK/glp_set_obj_dir problem (case dir
+                                      :minimize GLPKConstants/GLP_MIN
+                                      :maximize GLPKConstants/GLP_MAX))
+      (doseq [[x i] (indexed (func-vals f vars))]
+        (GLPK/glp_set_obj_coef problem (inc i) x))
+      (GLPK/glp_init_smcp params)
 
-    (let [solution (atom {})]
-      ; TODO: add objective
-      ; TODO: run glp_simplex
-      ; TODO: get solution
-      (GLPK/glp_delete_intArray int-array)
-      (GLPK/glp_delete_doubleArray double-array)
-      (GLPK/glp_delete_prob problem)
-      @solution)))
+      (let [result (GLPK/glp_simplex problem params)]
+        (if (= 0 result)
+          (into {} (map (fn [[var i]] [var (GLPK/glp_get_col_prim problem (inc i))])
+                        (indexed vars))) ; solution
+          {:error result}))
+      (finally
+        ;(GLPK/glp_write_lp problem nil "/tmp/lp.lp")
+        (GLPK/delete_intArray int-array)
+        (GLPK/delete_doubleArray double-array)
+        (GLPK/glp_delete_prob problem)))))
 
 (def ^:dynamic *lp-solver* glpk-solver)
 
 (s/defn solve-lp [variables dir :- Dir f constraints]
-  (*lp-solver* dir (normalize f) (map normalize constraints)))
+  (*lp-solver* variables dir (normalize f) (map normalize-constraint constraints)))
 
 (defn solve-result [& args]
   (:result (apply solve-lp args)))
