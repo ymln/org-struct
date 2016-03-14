@@ -6,7 +6,11 @@
   (map-indexed (fn [x i] [i x]) coll))
 
 (defn find-symbols [xs]
-  (set (filter symbol? (tree-seq sequential? rest xs))))
+  (set (filter symbol? (tree-seq sequential?
+                                 #(if (symbol? (first %))
+                                    (rest %)
+                                    %)
+                                 xs))))
 
 (s/defn func-vals :- [s/Num]
   [func :- Function, vars :- [s/Symbol]]

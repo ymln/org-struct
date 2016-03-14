@@ -10,4 +10,5 @@
                  (s/one s/Num "Num")])
 
 (def Type (s/enum :binary))
-(def Solution s/Any) ; TODO
+(def Solution (s/enum {:result {s/Symbol s/Num}}
+                      {:error s/Keyword})) ; TODO

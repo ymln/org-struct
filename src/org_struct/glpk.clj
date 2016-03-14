@@ -1,10 +1,9 @@
 (ns org-struct.glpk
-  (:require [org-struct.schema :refer [Dir Solution Constraint]]
+  (:require [org-struct.schema :refer [Dir Solution Constraint
+                                       Function Type]]
             [org-struct.utils :refer [indexed find-symbols func-vals]]
             [schema.core :as s])
-  (:import (clojure.asm Type)
-           (java.util.function Function)
-           (org.gnu.glpk GLPK GLPKConstants glp_smcp)))
+  (:import (org.gnu.glpk GLPK GLPKConstants glp_smcp)))
 
 (defn glpk-populate-array! [arr type vals]
   (doseq [[val i] (indexed vals)]
@@ -53,12 +52,22 @@
 
       (let [result (GLPK/glp_simplex problem params)]
         (if (= 0 result)
-          (into {} (map (fn [[var i]] [var (GLPK/glp_get_col_prim problem (inc i))])
-                        (indexed vars))) ; solution
-          {:error result}))
+          {:result (into {} (map (fn [[var i]] [var (GLPK/glp_get_col_prim problem (inc i))])
+                                 (indexed vars)))}
+          {:error (case result
+                    GLPKConstants/GLP_EBADB  :basis-bad
+                    GLPKConstants/GLP_ESING  :basis-singular
+                    GLPKConstants/GLP_ECOND  :basis-ill-conditioned
+                    GLPKConstants/GLP_EBOUND :incorrect-bounds
+                    GLPKConstants/GLP_EFAIL  :fail
+                    GLPKConstants/GLP_EOBJLL :objective-lower-limit
+                    GLPKConstants/GLP_EOBJUL :objective-upper-limit
+                    GLPKConstants/GLP_EITLIM :iteration-limit
+                    GLPKConstants/GLP_ENOPFS :no-pfs
+                    GLPKConstants/GLP_ENODFS :no-dfs
+                    :unknown)}))
       (finally
         ;(GLPK/glp_write_lp problem nil "/tmp/lp.lp")
         (GLPK/delete_intArray int-array)
         (GLPK/delete_doubleArray double-array)
         (GLPK/glp_delete_prob problem)))))
-

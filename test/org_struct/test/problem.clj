@@ -1,6 +1,7 @@
 (ns org-struct.test.problem
   (:require [clojure.test :refer [are deftest is]]
-            [org-struct.problem :refer [normalize solve-lp]]))
+            [org-struct.problem :refer [normalize remove-extremums
+                                        solve-germeyer solve-lp-result]]))
 
 (deftest normalization
   (are [a b] (= (normalize a) b)
@@ -11,4 +12,49 @@
        'x '(+ (* 1 x))))
 
 (deftest lp-test
-  (is (= '{x 2. y 3.} (solve-lp {} :maximize 'x '[(<= (+ x y) 5) (>= y 3)]))))
+  (is (= '{x 2. y 3.} (solve-lp-result {} :maximize 'x '[(<= (+ x y) 5) (>= y 3)]))))
+
+(defn seq-eq? [s tpl]
+  (if (and (sequential? s)
+           (sequential? tpl))
+    (every? (fn [[x y]] (seq-eq? x y)) (map vector s tpl))
+    (or (= tpl '_) (= s tpl))))
+
+(deftest remove-extremums-test
+  (are [a b] (seq-eq? (remove-extremums a) b)
+       '(max x y) '[_ [(<= (- x _)) (<= (- y _))]]
+       '(+ (max x y) (+ (min y (max a b)) 3))
+         '[(+ _ (+ _ 3)) [(<= (- x _) 0) (<= (- y _) 0)
+                          (>= (- y _) 0) (>= (- (max a b) _) 0)]]))
+
+(defn has-map? [submap m]
+  (every? #(= (m %) (submap %)) (keys submap)))
+
+(deftest germeyer-test
+  (is (has-map? '{x 3. y 3. z 3.}
+                (solve-germeyer [1 1 1]
+                                {:variables {}
+                                 :objectives '[[:maximize x]
+                                               [:maximize y]
+                                               [:maximize z]]
+                                 :constraints '[(<= (+ x y z) 9)]}))))
+
+(deftest germeyer-test2
+  (is (has-map? '{x 10. y 0.} (solve-germeyer [1 1]
+                                              {:variables {}
+                                               :objectives '[[:maximize x]
+                                                             [:minimize y]]
+                                               :constraints '[(<= (max x y) 10)
+                                                              (>= y 0)
+                                                              (>= x 0)]}))))
+
+(deftest germeyer-test2
+  (is (has-map? '{x 2.5 y 5. z 7.5} (solve-germeyer [1 1]
+                                              {:variables {}
+                                               :objectives '[[:minimize (max (* 2 x) y)]
+                                                             [:maximize z]]
+                                               :constraints '[(<= (max x y z) 10)
+                                                              (>= y 0)
+                                                              (>= x 0)
+                                                              (>= z 0)
+                                                              (= (+ x y (- z)) 0)]}))))
