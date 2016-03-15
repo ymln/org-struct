@@ -34,12 +34,43 @@
             (list '* -1 (second x))
             x))))
 
+(defn third [xs]
+  (second (rest xs)))
+
+; (rule (ex (* ?num (+ ?x ?&*))) :=> (ex (+ (* ?num ?x) (* ?num (+ ?&*)))))
+(defn fix-product [expr]
+  (if (and (sequential? expr)
+           (= 3 (count expr))
+           (= '* (first expr))
+           (sequential? (third expr))
+           (= '+ (first (third expr))))
+    (let [num (second expr)
+          addends (rest (third expr))]
+      (list* '+ (map #(list '* num %) addends)))
+    expr))
+
+; (rule (ex (+ (+ &x*) &y*)) :=> (ex (+ &x* &y*)))
+(defn fix-sum [expr]
+  (if (and (sequential? expr)
+           (= '+ (first expr)))
+    (let [res (reduce (fn [res subexpr]
+                        (if (and (sequential? subexpr)
+                                 (= '+ (first subexpr)))
+                          (update-in res [:plus] concat (rest subexpr))
+                          (update-in res [:non-plus] conj subexpr)))
+                      {:plus [] :non-plus []}
+                      (rest expr))]
+      (list* '+ (concat (:plus res) (:non-plus res))))
+    expr))
+
 (defn normalize [expr]
   (->> expr
        simplify
        wrap-in-product
        wrap-in-sum
        fix-minus
+       (postwalk fix-product)
+       (postwalk fix-sum)
        (postwalk #(transform-one-level normalize-rules %))))
 
 (defn simplify-constraint [constraint]
@@ -99,6 +130,8 @@
                                     [f []]
                                     (remove-extremums f))
         new-constraints (remove-extremums-in-constraints (concat constraints constraints-for-f))]
+    (prn "constraints: " new-constraints)
+    (prn "normalized constraints: " (map normalize-constraint new-constraints))
     (if should-recurse?
       {:result (last (sort-by #(evaluate-ex new-f %) (map #(solve-lp-result variables dir % constraints) (rest new-f))))}
       (*lp-solver* variables dir (normalize new-f) (map normalize-constraint new-constraints)))))

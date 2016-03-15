@@ -48,7 +48,7 @@
                                                               (>= y 0)
                                                               (>= x 0)]}))))
 
-(deftest germeyer-test2
+(deftest germeyer-test3
   (is (has-map? '{x 2.5 y 5. z 7.5} (solve-germeyer [1 1]
                                               {:variables {}
                                                :objectives '[[:minimize (max (* 2 x) y)]

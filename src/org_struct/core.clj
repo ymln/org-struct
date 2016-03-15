@@ -18,12 +18,12 @@
             (for [j (range contractors-count)]
               (gensym (str "x_" i "_" j "_"))))
 
-        times (list 'max (for [p P]
-                           (sum (for [i p
-                                      j (range contractors-count)]
-                                  (list '*
-                                        (matrix-ref x (- i 1) j)
-                                        (matrix-ref t (- i 1) j))))))
+        times (list* 'max (for [p P]
+                            (sum (for [i p
+                                       j (range contractors-count)]
+                                   (list '*
+                                         (matrix-ref x (- i 1) j)
+                                         (matrix-ref t (- i 1) j))))))
         finances (matrix-inner-product x f)
         quality (sum (for [i (range bp-count)
                            j (range contractors-count)]
