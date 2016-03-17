@@ -1,8 +1,10 @@
 (ns org-struct.problem
   (:require [clojure.walk :refer [postwalk]]
-            [numeric.expresso.core :refer [ex optimize simplify]]
+            [numeric.expresso.core :refer [ex optimize]]
             [numeric.expresso.optimize :refer [compile-expr*]]
-            [numeric.expresso.rules :refer [guard rule transform-one-level]]
+            [numeric.expresso.rules :refer [guard rule transform-expression
+                                            transform-one-level]]
+            [numeric.expresso.simplify :as es]
             [org-struct.glpk :refer [glpk-solver]]
             [org-struct.schema :refer [Dir]]
             [org-struct.utils :refer [find-symbols]]
@@ -63,15 +65,24 @@
       (list* '+ (concat (:plus res) (:non-plus res))))
     expr))
 
+(defn smpl [x]
+  (->> x
+       (transform-expression es/normalize-rules)
+       (transform-expression (with-meta (concat es/universal-rules
+                                                es/eval-rules
+                                                es/simplify-rules)
+                                        {:id :simp-expr-rules2}))
+       ))
+
 (defn normalize [expr]
   (->> expr
-       simplify
+       smpl
        wrap-in-product
        wrap-in-sum
        fix-minus
        (postwalk fix-product)
-       (postwalk fix-sum)
-       (postwalk #(transform-one-level normalize-rules %))))
+       (postwalk #(transform-one-level normalize-rules %))
+       (postwalk fix-sum)))
 
 (defn simplify-constraint [constraint]
   (let [[op func num] constraint]

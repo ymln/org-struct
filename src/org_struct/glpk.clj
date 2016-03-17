@@ -11,7 +11,11 @@
       :int    (GLPK/intArray_setitem    arr (inc i) val)
       :double (GLPK/doubleArray_setitem arr (inc i) val))))
 
-(s/defn glpk-solver :- Solution
+(defn p [x]
+  (prn x)
+  x)
+
+(s/defn glpk-solver
   [variables :- {s/Symbol Type}
    dir :- Dir
    f :- Function

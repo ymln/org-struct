@@ -48,5 +48,4 @@
    [4 1]])
 
 (deftest org-struct-test
-  (prn "ORG STRUCT: " (org-struct w t f q graph))
   (prn "SOLUTION: " (solve-germeyer [1 1 1] (org-struct w t f q graph))))
