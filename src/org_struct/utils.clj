@@ -14,7 +14,7 @@
 
 (s/defn func-vals :- [s/Num]
   [func :- Function, vars :- [s/Symbol]]
-  (prn "FUNC: " func)
+  ;(prn "FUNC: " func)
   (let [vars-map (into {} (map (fn [[op num var]]
                                  (assert (= op '*))
                                  [var num])

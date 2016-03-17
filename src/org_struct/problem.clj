@@ -1,5 +1,7 @@
 (ns org-struct.problem
-  (:require [clojure.walk :refer [postwalk]]
+  (:require [clojure.core.match :refer [match]]
+            [clojure.test :refer [is with-test]]
+            [clojure.walk :refer [postwalk]]
             [numeric.expresso.core :refer [ex optimize]]
             [numeric.expresso.optimize :refer [compile-expr*]]
             [numeric.expresso.rules :refer [guard rule transform-expression
@@ -17,9 +19,13 @@
    (rule (ex (* ?x ?num)) :=> (ex (* ?num ?x)) :if (guard (number? ?num)))])
 
 (defn wrap-in-product [expr]
-  (if-not (seq? expr)
-    (list '* expr)
-    expr))
+  (if-not (sequential? expr)
+    (if-not (number? expr)
+      (list '* 1 expr)
+      expr)
+    (if (= '+ (first expr))
+      (list* '+ (map wrap-in-product (rest expr)))
+      expr)))
 
 (defn wrap-in-sum [expr]
   (if (= '* (first expr))
@@ -52,17 +58,18 @@
     expr))
 
 ; (rule (ex (+ (+ &x*) &y*)) :=> (ex (+ &x* &y*)))
-(defn fix-sum [expr]
+(defn fix-sum+prod [expr]
   (if (and (sequential? expr)
-           (= '+ (first expr)))
-    (let [res (reduce (fn [res subexpr]
+           ('#{+ *} (first expr)))
+    (let [op (first expr)
+          res (reduce (fn [res subexpr]
                         (if (and (sequential? subexpr)
-                                 (= '+ (first subexpr)))
+                                 (= op (first subexpr)))
                           (update-in res [:plus] concat (rest subexpr))
                           (update-in res [:non-plus] conj subexpr)))
                       {:plus [] :non-plus []}
                       (rest expr))]
-      (list* '+ (concat (:plus res) (:non-plus res))))
+      (list* op (concat (:plus res) (:non-plus res))))
     expr))
 
 (defn smpl [x]
@@ -74,6 +81,66 @@
                                         {:id :simp-expr-rules2}))
        ))
 
+(defn numbers? [xs]
+  (every? number? xs))
+
+(defn not-1 [x]
+  (not= 1 x))
+
+(defn not-number? [x]
+  (not (number? x)))
+
+(defn normalize-step [expr]
+  (match expr
+    [(op :guard '#{+ - * /}) & (xs :guard numbers?)]
+      (apply (case op + + - - * * / /) xs)
+    ['- x] ['* -1 x]
+    ['- x & xs] (vector '+ x (apply vector '* -1 xs))
+    ['/ (x :guard not-1) & (xs :guard not-empty)] (vector '* x (apply vector '/ 1 xs))
+    ['* 0 & xs] 0
+    ['* 1 & xs] (apply vector '* xs)
+    ['+ 0 & xs] (apply vector '+ xs)
+    ['+ x] x
+    ['* x] x
+    ['* x ['+ & xs]] (apply vector '+ (map #(vector '* x %) xs))
+    ['* (x :guard number?) ['- (y :guard not-number?)]] (vector '* (- x) y)
+    [(op :guard '#{* +}) & xs]
+      (let [numbers (filter number? xs)
+            not-numbers (filter not-number? xs)]
+        (if (empty? numbers)
+          (apply vector op not-numbers)
+          (apply vector op (apply (case op + + * *) numbers) not-numbers)))
+    :else expr))
+
+(defn vectorize [expr]
+  (postwalk #(if (seq? %) (vec %) %) expr))
+
+(with-test #'vectorize
+  (is (= '[+ 1 [+ 2 3]] (vectorize '(+ 1 (+ 2 3))))))
+
+(defn my-normalize* [expr]
+  (loop [n 0 expr (vectorize expr)]
+    (if (> n 1000)
+      (throw (Exception. "Normalization limit"))
+      (let [new-expr (postwalk #(vectorize (fix-sum+prod (normalize-step %))) expr)]
+        (if (not= expr new-expr)
+          (recur (inc n) new-expr)
+          new-expr)))))
+(with-test #'my-normalize*
+  (is (= 6 (my-normalize* '(+ 1 (+ 2 3)))))
+  (is (= 0 (my-normalize* '(* 0 x y z))))
+  (is (= '(+ 3 x) (my-normalize* '(+ 1 x 2))))
+  (is (= '(* -5 x) (my-normalize* '(* 5 (- x)))))
+  (is (= '(+ 15 (* 5 x)) (my-normalize* '(* 5 (+ 3 x))))))
+
+(defn my-normalize [expr]
+  (->> expr
+       my-normalize*
+       wrap-in-product
+       wrap-in-sum))
+(with-test #'my-normalize
+  (is (= (my-normalize 'x) '(+ (* 1 x)))))
+
 (defn normalize [expr]
   (->> expr
        smpl
@@ -82,7 +149,8 @@
        fix-minus
        (postwalk fix-product)
        (postwalk #(transform-one-level normalize-rules %))
-       (postwalk fix-sum)))
+       (postwalk fix-sum+prod)))
+(def normalize my-normalize)
 
 (defn simplify-constraint [constraint]
   (let [[op func num] constraint]
@@ -130,7 +198,10 @@
         f (compile-expr* vars (optimize func))]
     (apply f (mapv #(get args % 0) vars))))
 
-(def solve-lp-result)
+(defn evaluate-ex [func args]
+  (my-normalize* (postwalk #(or (args %) %) func)))
+
+(declare solve-lp-result)
 (s/defn solve-lp [variables dir :- Dir f constraints]
   (let [should-recurse? (and (sequential? f)
                              (or (and (= 'max (first f))
@@ -141,8 +212,9 @@
                                     [f []]
                                     (remove-extremums f))
         new-constraints (remove-extremums-in-constraints (concat constraints constraints-for-f))]
-    (prn "constraints: " new-constraints)
-    (prn "normalized constraints: " (map normalize-constraint new-constraints))
+    ;(prn "NEW F:" new-f)
+    ;(prn "constraints: " new-constraints)
+    ;(prn "normalized constraints: " (map normalize-constraint new-constraints))
     (if should-recurse?
       {:result (last (sort-by #(evaluate-ex new-f %) (map #(solve-lp-result variables dir % constraints) (rest new-f))))}
       (*lp-solver* variables dir (normalize new-f) (map normalize-constraint new-constraints)))))
@@ -163,9 +235,11 @@
                                           fmax " is equal to " fmin
                                           " for function " func)))
                   (case dir
-                    :minimize (ex (/ (- ~func ~fmin) (- ~fmax ~fmin)))
-                    :maximize (ex (/ (- ~fmax ~func) (- ~fmax ~fmin))))))
+                    :minimize (normalize (ex (/ (- ~func ~fmin) (- ~fmax ~fmin))))
+                    :maximize (normalize (ex (/ (- ~fmax ~func) (- ~fmax ~fmin)))))))
         weighted-funcs (map #(ex (* ~%1 ~%2)) funcs weights)]
+    ;(prn "WEIGHTED-FUNCS: " weighted-funcs)
+    ;(prn "CONSTRAINTS: " constraints)
     (solve-lp-result variables
                      :minimize
                      (list* 'max weighted-funcs)
