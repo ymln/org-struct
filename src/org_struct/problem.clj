@@ -9,7 +9,7 @@
             [numeric.expresso.simplify :as es]
             [org-struct.glpk :refer [glpk-solver]]
             [org-struct.schema :refer [Dir]]
-            [org-struct.utils :refer [find-symbols]]
+            [org-struct.utils :refer [find-symbols p]]
             [schema.core :as s]))
 
 (def normalize-rules
@@ -199,7 +199,12 @@
     (apply f (mapv #(get args % 0) vars))))
 
 (defn evaluate-ex [func args]
-  (my-normalize* (postwalk #(or (args %) %) func)))
+  (let [res (my-normalize* (postwalk #(or (args %) %) func))]
+    (if (sequential? res)
+      (case (first res)
+        min (apply min (rest res))
+        max (apply max (rest res)))
+      res)))
 
 (declare solve-lp-result)
 (s/defn solve-lp [variables dir :- Dir f constraints]
@@ -227,17 +232,18 @@
 (defn solve-germeyer [weights {:keys [variables objectives constraints]}]
   (assert (= (count weights) (count objectives)))
   (let [min+max (for [[dir func] objectives]
-                   [(evaluate-ex func (solve-lp-result variables :minimize func constraints))
-                    (evaluate-ex func (solve-lp-result variables :maximize func constraints))])
+                  [(evaluate-ex func (solve-lp-result variables :minimize func constraints))
+                   (evaluate-ex func (solve-lp-result variables :maximize func constraints))])
         funcs (for [[[fmin fmax] [dir func]] (map vector min+max objectives)]
                 (if (= fmax fmin)
                   (throw (Exception. (str "Error when trying to solve problem: "
                                           fmax " is equal to " fmin
                                           " for function " func)))
                   (case dir
-                    :minimize (normalize (ex (/ (- ~func ~fmin) (- ~fmax ~fmin))))
-                    :maximize (normalize (ex (/ (- ~fmax ~func) (- ~fmax ~fmin)))))))
+                    :minimize (ex (/ (- ~func ~fmin) (- ~fmax ~fmin)))
+                    :maximize (ex (/ (- ~fmax ~func) (- ~fmax ~fmin))))))
         weighted-funcs (map #(ex (* ~%1 ~%2)) funcs weights)]
+    (assert (every? number? (apply concat min+max)))
     ;(prn "WEIGHTED-FUNCS: " weighted-funcs)
     ;(prn "CONSTRAINTS: " constraints)
     (solve-lp-result variables

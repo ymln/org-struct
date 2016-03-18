@@ -3,7 +3,7 @@
             [org-struct.problem :refer [solve-germeyer]]
             [schema.test :refer [deftest]]))
 
-(def oo 100000000) ;; infinity
+(def oo Double/POSITIVE_INFINITY)
 
 (def t
   [[5  3   oo  oo  oo]

@@ -11,10 +11,6 @@
       :int    (GLPK/intArray_setitem    arr (inc i) val)
       :double (GLPK/doubleArray_setitem arr (inc i) val))))
 
-(defn p [x]
-  (prn x)
-  x)
-
 (s/defn glpk-solver
   [variables :- {s/Symbol Type}
    dir :- Dir
@@ -27,6 +23,7 @@
         double-array (GLPK/new_doubleArray (inc vars-count))
         params (glp_smcp.)]
     (try
+      ;(GLPK/glp_term_out GLPKConstants/GLP_OFF)
       (GLPK/glp_add_cols problem vars-count)
       (doseq [[var i] (indexed vars)]
         (GLPK/glp_set_col_name problem (inc i) (str var))
@@ -54,6 +51,7 @@
         (GLPK/glp_set_obj_coef problem (inc i) x))
       (GLPK/glp_init_smcp params)
 
+      ;(GLPK/glp_write_lp problem nil "/tmp/lp.lp")
       (let [result (GLPK/glp_simplex problem params)]
         (if (= 0 result)
           {:result (into {} (map (fn [[var i]] [var (GLPK/glp_get_col_prim problem (inc i))])
@@ -71,7 +69,6 @@
                     GLPKConstants/GLP_ENODFS :no-dfs
                     :unknown)}))
       (finally
-        ;(GLPK/glp_write_lp problem nil "/tmp/lp.lp")
         (GLPK/delete_intArray int-array)
         (GLPK/delete_doubleArray double-array)
         (GLPK/glp_delete_prob problem)))))

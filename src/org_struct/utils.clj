@@ -20,3 +20,8 @@
                                  [var num])
                                (rest func)))]
     (map #(get vars-map % 0) vars)))
+
+(defn p [x]
+  (prn x)
+  x)
+
