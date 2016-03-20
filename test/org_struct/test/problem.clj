@@ -58,7 +58,7 @@
                                                               (>= x 0)]}))))
 
 (deftest germeyer-test3
-  (is (has-map? '{x 1. y 2. z 3.} (solve-germeyer [1 1]
+  (is (has-map? '{x 0.75 y 1.5 z 2.25} (solve-germeyer [1 1]
                                               {:variables {}
                                                :objectives '[[:minimize (max (* 2 x) y)]
                                                              [:maximize z]]
@@ -67,3 +67,11 @@
                                                               (>= x 0)
                                                               (>= z 0)
                                                               (= (+ x y (- z)) 0)]}))))
+
+(deftest binary-test
+  (is (has-map? '{x 1 y 0 z 1}
+                (solve-lp-result '{x :binary, y :binary, z :binary}
+                                 :maximize
+                                 '(+ x z)
+                                 '[(<= (+ x y) 1)
+                                   (= (max y z) 1)]))))

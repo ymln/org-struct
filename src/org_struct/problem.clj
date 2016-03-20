@@ -2,21 +2,16 @@
   (:require [clojure.core.match :refer [match]]
             [clojure.test :refer [is with-test]]
             [clojure.walk :refer [postwalk]]
-            [numeric.expresso.core :refer [ex optimize]]
-            [numeric.expresso.optimize :refer [compile-expr*]]
-            [numeric.expresso.rules :refer [guard rule transform-expression
-                                            transform-one-level]]
-            [numeric.expresso.simplify :as es]
             [org-struct.glpk :refer [glpk-solver]]
             [org-struct.schema :refer [Dir]]
             [org-struct.utils :refer [find-symbols p]]
             [schema.core :as s]))
 
-(def normalize-rules
-  [(rule (ex (+ ?x ?&*)) :=> (ex (+ (* 1 ?x) ?&*)) :if (guard (symbol? ?x)))
-   (rule (ex (* ?x)) :=> (ex (* 1 ?x)) :if (guard (symbol? ?x)))
-   (rule (ex (* ?num (- ?x))) :==> (list '* (- ?num) ?x) :if (guard (number? ?num)))
-   (rule (ex (* ?x ?num)) :=> (ex (* ?num ?x)) :if (guard (number? ?num)))])
+(comment (def normalize-rules
+           [(rule (ex (+ ?x ?&*)) :=> (ex (+ (* 1 ?x) ?&*)) :if (guard (symbol? ?x)))
+            (rule (ex (* ?x)) :=> (ex (* 1 ?x)) :if (guard (symbol? ?x)))
+            (rule (ex (* ?num (- ?x))) :==> (list '* (- ?num) ?x) :if (guard (number? ?num)))
+            (rule (ex (* ?x ?num)) :=> (ex (* ?num ?x)) :if (guard (number? ?num)))]))
 
 (defn wrap-in-product [expr]
   (if-not (sequential? expr)
@@ -72,15 +67,6 @@
       (list* op (concat (:plus res) (:non-plus res))))
     expr))
 
-(defn smpl [x]
-  (->> x
-       (transform-expression es/normalize-rules)
-       (transform-expression (with-meta (concat es/universal-rules
-                                                es/eval-rules
-                                                es/simplify-rules)
-                                        {:id :simp-expr-rules2}))
-       ))
-
 (defn numbers? [xs]
   (every? number? xs))
 
@@ -118,7 +104,7 @@
 (with-test #'vectorize
   (is (= '[+ 1 [+ 2 3]] (vectorize '(+ 1 (+ 2 3))))))
 
-(defn my-normalize* [expr]
+(defn normalize* [expr]
   (loop [n 0 expr (vectorize expr)]
     (if (> n 1000)
       (throw (Exception. "Normalization limit"))
@@ -126,31 +112,20 @@
         (if (not= expr new-expr)
           (recur (inc n) new-expr)
           new-expr)))))
-(with-test #'my-normalize*
-  (is (= 6 (my-normalize* '(+ 1 (+ 2 3)))))
-  (is (= 0 (my-normalize* '(* 0 x y z))))
-  (is (= '(+ 3 x) (my-normalize* '(+ 1 x 2))))
-  (is (= '(* -5 x) (my-normalize* '(* 5 (- x)))))
-  (is (= '(+ 15 (* 5 x)) (my-normalize* '(* 5 (+ 3 x))))))
-
-(defn my-normalize [expr]
-  (->> expr
-       my-normalize*
-       wrap-in-product
-       wrap-in-sum))
-(with-test #'my-normalize
-  (is (= (my-normalize 'x) '(+ (* 1 x)))))
+(with-test #'normalize*
+  (is (= 6 (normalize* '(+ 1 (+ 2 3)))))
+  (is (= 0 (normalize* '(* 0 x y z))))
+  (is (= '(+ 3 x) (normalize* '(+ 1 x 2))))
+  (is (= '(* -5 x) (normalize* '(* 5 (- x)))))
+  (is (= '(+ 15 (* 5 x)) (normalize* '(* 5 (+ 3 x))))))
 
 (defn normalize [expr]
   (->> expr
-       smpl
+       normalize*
        wrap-in-product
-       wrap-in-sum
-       fix-minus
-       (postwalk fix-product)
-       (postwalk #(transform-one-level normalize-rules %))
-       (postwalk fix-sum+prod)))
-(def normalize my-normalize)
+       wrap-in-sum))
+(with-test #'normalize
+  (is (= (normalize 'x) '(+ (* 1 x)))))
 
 (defn simplify-constraint [constraint]
   (let [[op func num] constraint]
@@ -193,13 +168,13 @@
         (recur (conj processed (list op new-func num)) (concat (rest unprocessed) new-constraints)))
       processed)))
 
-(defn evaluate-ex [func args]
-  (let [vars (vec (find-symbols func))
-        f (compile-expr* vars (optimize func))]
-    (apply f (mapv #(get args % 0) vars))))
+(comment (defn evaluate-ex [func args]
+           (let [vars (vec (find-symbols func))
+                 f (compile-expr* vars (optimize func))]
+             (apply f (mapv #(get args % 0) vars)))))
 
 (defn evaluate-ex [func args]
-  (let [res (my-normalize* (postwalk #(or (args %) %) func))]
+  (let [res (normalize* (postwalk #(or (args %) %) func))]
     (if (sequential? res)
       (case (first res)
         min (apply min (rest res))
@@ -217,9 +192,6 @@
                                     [f []]
                                     (remove-extremums f))
         new-constraints (remove-extremums-in-constraints (concat constraints constraints-for-f))]
-    ;(prn "NEW F:" new-f)
-    ;(prn "constraints: " new-constraints)
-    ;(prn "normalized constraints: " (map normalize-constraint new-constraints))
     (if should-recurse?
       {:result (last (sort-by #(evaluate-ex new-f %) (map #(solve-lp-result variables dir % constraints) (rest new-f))))}
       (*lp-solver* variables dir (normalize new-f) (map normalize-constraint new-constraints)))))
@@ -240,12 +212,10 @@
                                           fmax " is equal to " fmin
                                           " for function " func)))
                   (case dir
-                    :minimize (ex (/ (- ~func ~fmin) (- ~fmax ~fmin)))
-                    :maximize (ex (/ (- ~fmax ~func) (- ~fmax ~fmin))))))
-        weighted-funcs (map #(ex (* ~%1 ~%2)) funcs weights)]
-    (assert (every? number? (apply concat min+max)))
-    ;(prn "WEIGHTED-FUNCS: " weighted-funcs)
-    ;(prn "CONSTRAINTS: " constraints)
+                    :minimize ['/ ['- func fmin] ['- fmax fmin]]
+                    :maximize ['/ ['- fmax func] ['- fmax fmin]])))
+        weighted-funcs (map #(vector '* %1 %2) funcs weights)]
+    (assert (numbers? (apply concat min+max)))
     (solve-lp-result variables
                      :minimize
                      (list* 'max weighted-funcs)
