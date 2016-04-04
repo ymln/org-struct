@@ -1,6 +1,5 @@
 (ns org-struct.problem
   (:require [clojure.core.match :refer [match]]
-            [clojure.test :refer [is with-test]]
             [clojure.walk :refer [postwalk]]
             [org-struct.glpk :refer [glpk-solver]]
             [org-struct.schema :refer [Dir]]
@@ -101,9 +100,6 @@
 (defn vectorize [expr]
   (postwalk #(if (seq? %) (vec %) %) expr))
 
-(with-test #'vectorize
-  (is (= '[+ 1 [+ 2 3]] (vectorize '(+ 1 (+ 2 3))))))
-
 (defn normalize* [expr]
   (loop [n 0 expr (vectorize expr)]
     (if (> n 1000)
@@ -112,20 +108,12 @@
         (if (not= expr new-expr)
           (recur (inc n) new-expr)
           new-expr)))))
-(with-test #'normalize*
-  (is (= 6 (normalize* '(+ 1 (+ 2 3)))))
-  (is (= 0 (normalize* '(* 0 x y z))))
-  (is (= '(+ 3 x) (normalize* '(+ 1 x 2))))
-  (is (= '(* -5 x) (normalize* '(* 5 (- x)))))
-  (is (= '(+ 15 (* 5 x)) (normalize* '(* 5 (+ 3 x))))))
 
 (defn normalize [expr]
   (->> expr
        normalize*
        wrap-in-product
        wrap-in-sum))
-(with-test #'normalize
-  (is (= (normalize 'x) '(+ (* 1 x)))))
 
 (defn simplify-constraint [constraint]
   (let [[op func num] constraint]

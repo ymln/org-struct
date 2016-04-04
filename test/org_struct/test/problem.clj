@@ -1,8 +1,8 @@
 (ns org-struct.test.problem
   (:require [clojure.test :refer [are deftest is]]
-            [org-struct.problem :refer [normalize remove-extremums
-                                        solve-germeyer solve-lp
-                                        solve-lp-result]]))
+            [org-struct.problem :refer [normalize normalize* remove-extremums
+                                        solve-germeyer solve-lp-result
+                                        vectorize]]))
 
 (deftest normalization
   (are [a b] (= (normalize a) b)
@@ -75,3 +75,12 @@
                                  '(+ x z)
                                  '[(<= (+ x y) 1)
                                    (= (max y z) 1)]))))
+
+(deftest other-tests
+  (is (= '[+ 1 [+ 2 3]] (vectorize '(+ 1 (+ 2 3)))))
+  (is (= 6 (normalize* '(+ 1 (+ 2 3)))))
+  (is (= 0 (normalize* '(* 0 x y z))))
+  (is (= '(+ 3 x) (normalize* '(+ 1 x 2))))
+  (is (= '(* -5 x) (normalize* '(* 5 (- x)))))
+  (is (= '(+ 15 (* 5 x)) (normalize* '(* 5 (+ 3 x)))))
+  (is (= (normalize 'x) '(+ (* 1 x)))))
