@@ -95,6 +95,8 @@
         (if (empty? numbers)
           (apply vector op not-numbers)
           (apply vector op (apply (case op + + * *) numbers) not-numbers)))
+    [(op :guard '#{min max}) & (xs :guard numbers?)]
+      (apply (case op min min max max) xs)
     :else expr))
 
 (defn vectorize [expr]
@@ -194,6 +196,7 @@
   (let [min+max (for [[dir func] objectives]
                   [(evaluate-ex func (solve-lp-result variables :minimize func constraints))
                    (evaluate-ex func (solve-lp-result variables :maximize func constraints))])
+        _ (prn min+max)
         funcs (for [[[fmin fmax] [dir func]] (map vector min+max objectives)]
                 (if (= fmax fmin)
                   (throw (Exception. (str "Error when trying to solve problem: "
@@ -202,9 +205,11 @@
                   (case dir
                     :minimize ['/ ['- func fmin] ['- fmax fmin]]
                     :maximize ['/ ['- fmax func] ['- fmax fmin]])))
-        weighted-funcs (map #(vector '* %1 %2) funcs weights)]
+        weighted-funcs (map #(vector '* %1 %2) funcs weights)
+        obj-func (list* 'max weighted-funcs)]
     (assert (numbers? (apply concat min+max)))
-    (solve-lp-result variables
-                     :minimize
-                     (list* 'max weighted-funcs)
-                     constraints)))
+    {:obj-func obj-func
+     :result (solve-lp-result variables
+                              :minimize
+                              obj-func
+                              constraints)}))

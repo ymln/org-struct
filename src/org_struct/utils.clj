@@ -23,3 +23,7 @@
 (defn p [x]
   (prn x)
   x)
+
+(defn has-map? [submap m]
+  (every? #(= (m %) (submap %)) (keys submap)))
+

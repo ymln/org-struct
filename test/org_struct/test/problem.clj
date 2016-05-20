@@ -2,7 +2,8 @@
   (:require [clojure.test :refer [are deftest is]]
             [org-struct.problem :refer [normalize normalize* remove-extremums
                                         solve-germeyer solve-lp-result
-                                        vectorize]]))
+                                        vectorize]]
+            [org-struct.utils :refer [has-map?]]))
 
 (deftest normalization
   (are [a b] (= (normalize a) b)
@@ -29,9 +30,6 @@
          '[(+ _ (+ _ 3)) [(<= (- x _) 0) (<= (- y _) 0)
                           (>= (- y _) 0) (>= (- (max a b) _) 0)]]))
 
-(defn has-map? [submap m]
-  (every? #(= (m %) (submap %)) (keys submap)))
-
 (def constraints '[(<= (+ x y z) 9)
                    (<= x 9)
                    (<= y 9)
@@ -41,32 +39,32 @@
                    (>= z 0)])
 (deftest germeyer-test
   (is (has-map? '{x 3. y 3. z 3.}
-                (solve-germeyer [1 1 1]
-                                {:variables {}
-                                 :objectives '[[:maximize x]
-                                               [:maximize y]
-                                               [:maximize z]]
-                                 :constraints constraints}))))
+                (:result (solve-germeyer [1 1 1]
+                                         {:variables {}
+                                          :objectives '[[:maximize x]
+                                                        [:maximize y]
+                                                        [:maximize z]]
+                                          :constraints constraints})))))
 
 (deftest germeyer-test2
-  (is (has-map? '{x 10. y 0.} (solve-germeyer [1 1]
-                                              {:variables {}
-                                               :objectives '[[:maximize x]
-                                                             [:minimize y]]
-                                               :constraints '[(<= (max x y) 10)
-                                                              (>= y 0)
-                                                              (>= x 0)]}))))
+  (is (has-map? '{x 10. y 0.} (:result (solve-germeyer [1 1]
+                                                       {:variables {}
+                                                        :objectives '[[:maximize x]
+                                                                      [:minimize y]]
+                                                        :constraints '[(<= (max x y) 10)
+                                                                       (>= y 0)
+                                                                       (>= x 0)]})))))
 
 (deftest germeyer-test3
-  (is (has-map? '{x 0.75 y 1.5 z 2.25} (solve-germeyer [1 1]
-                                              {:variables {}
-                                               :objectives '[[:minimize (max (* 2 x) y)]
-                                                             [:maximize z]]
-                                               :constraints '[(<= (max x y z) 3)
-                                                              (>= y 0)
-                                                              (>= x 0)
-                                                              (>= z 0)
-                                                              (= (+ x y (- z)) 0)]}))))
+  (is (has-map? '{x 0.75 y 1.5 z 2.25} (:result (solve-germeyer [1 1]
+                                                                {:variables {}
+                                                                 :objectives '[[:minimize (max (* 2 x) y)]
+                                                                               [:maximize z]]
+                                                                 :constraints '[(<= (max x y z) 3)
+                                                                                (>= y 0)
+                                                                                (>= x 0)
+                                                                                (>= z 0)
+                                                                                (= (+ x y (- z)) 0)]})))))
 
 (deftest binary-test
   (is (has-map? '{x 1 y 0 z 1}

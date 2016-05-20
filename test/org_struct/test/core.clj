@@ -1,6 +1,7 @@
 (ns org-struct.test.core
   (:require [clojure.test :refer [is]]
             [org-struct.core :refer [oo org-struct]]
+            [org-struct.utils :refer [has-map?]]
             [schema.test :refer [deftest]]))
 
 (def t
@@ -52,5 +53,13 @@
     [1 e]])
 
 (deftest org-struct-test
-  (is (= {:time 15 :finances 50 :quality 135}
-         (org-struct [1/3 1/3 1/3] w t f q graph))))
+  (let [res (org-struct [1/3 1/3 1/3] w t f q graph)]
+    (prn (:obj-result res))
+    (is (or (has-map? {:quality 135 :finances 50 :time 15} res)
+            (has-map? {:quality 751 :finances 70 :time 10} res)
+            (has-map? {:quality 765 :finances 85 :time 21} res))
+        (str "Result is " res))))
+
+(deftest org-struct-test-simple
+  (is (has-map? {:quality 4 :finances 2 :time 2}
+                (org-struct [1 1 1] [1 1] [[1 2] [1 2]] [[1 2] [1 2]] [[2 1] [2 1]] [[1 2]]))))

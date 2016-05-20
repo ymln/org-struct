@@ -72,7 +72,7 @@
       (let [result (GLPK/glp_simplex problem params-lp)]
         (if (= 0 result)
           (let [result2 (GLPK/glp_intopt problem params-mip)]
-            (prn "obj: " (GLPK/glp_get_obj_val problem))
+            ;(prn "obj: " (GLPK/glp_get_obj_val problem))
             (if (= 0 result2)
               {:result (into {} (map (fn [[var i]]
                                        (let [res (GLPK/glp_get_col_prim problem (inc i))]
