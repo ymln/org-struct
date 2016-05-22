@@ -9,5 +9,6 @@
                  ;[expresso "0.2.2-SNAPSHOT"]
                  [prismatic/schema "1.0.5"]
                  [org.clojure/core.match "0.3.0-alpha4"]]
+  :main org-struct.core
   ;; for glpk-java
   :repositories {"XypronRelease" "http://rsync.xypron.de/repository"})
